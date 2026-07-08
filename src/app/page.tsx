@@ -20,7 +20,7 @@ export default function InterviewWorkspace() {
 
       {/* Navbar */}
 
-      <header className="h-16 border-b border-white/[0.06] bg-[#0D0D0E] flex items-center justify-between px-8">
+      <header className="h-16 border-b border-white/6 bg-[#0D0D0E] flex items-center justify-between px-8">
 
         <div className="flex items-center gap-2.5">
 
@@ -38,7 +38,7 @@ export default function InterviewWorkspace() {
 
         <PanelGroup
           direction="horizontal"
-          className="h-full rounded-xl overflow-hidden border border-white/[0.06]"
+          className="h-full rounded-xl overflow-hidden border border-white/6"
         >
 
           <Panel
@@ -51,11 +51,11 @@ export default function InterviewWorkspace() {
             />
           </Panel>
 
-          <PanelResizeHandle className="w-px bg-white/[0.06] hover:bg-[#E8A33D]/50 transition-colors relative group">
+          <PanelResizeHandle className="w-px bg-white/6 hover:bg-[#E8A33D]/50 transition-colors relative group">
 
             <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 flex items-center">
 
-              <div className="h-10 w-[3px] rounded-full bg-white/10 group-hover:bg-[#E8A33D] transition-colors" />
+              <div className="h-10 w-0.75 rounded-full bg-white/10 group-hover:bg-[#E8A33D] transition-colors" />
 
             </div>
 

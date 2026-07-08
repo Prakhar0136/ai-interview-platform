@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
     Send,
     Loader2,
     Bot,
     User,
+    Mic,
+    MicOff,
+    Volume2,
+    VolumeX,
 } from "lucide-react";
 
 type Message = {
+    id: string;
     role: "user" | "ai";
     content: string;
 };
@@ -22,6 +27,7 @@ export default function ChatPanel({
 }: ChatPanelProps) {
     const [messages, setMessages] = useState<Message[]>([
         {
+            id: crypto.randomUUID(),
             role: "ai",
             content:
                 "Hello! I'm your AI interviewer. Let's begin your technical interview whenever you're ready.",
@@ -31,14 +37,154 @@ export default function ChatPanel({
     const [input, setInput] = useState("");
 
     const [isLoading, setIsLoading] = useState(false);
+    const [isListening, setIsListening] = useState(false);
+    const [isTtsEnabled, setIsTtsEnabled] = useState(true);
+
+    const recognitionRef = useRef<any>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const voicesLoadedRef = useRef(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({
+            behavior: "smooth",
+        });
+    }, [messages, isLoading]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const SpeechRecognition =
+            (window as any).SpeechRecognition ||
+            (window as any).webkitSpeechRecognition;
+
+        if (!SpeechRecognition) return;
+
+        const recognition = new SpeechRecognition();
+
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onresult = (event: any) => {
+            let finalTranscript = "";
+
+            for (
+                let i = event.resultIndex;
+                i < event.results.length;
+                i++
+            ) {
+                if (event.results[i].isFinal) {
+                    finalTranscript +=
+                        event.results[i][0].transcript;
+                }
+            }
+
+            if (finalTranscript) {
+                setInput((prev) =>
+                    prev +
+                    (prev && !prev.endsWith(" ") ? " " : "") +
+                    finalTranscript
+                );
+            }
+        };
+
+        recognition.onerror = (event: any) => {
+            console.log("Speech Recognition Error:", event.error);
+            setIsListening(false);
+        };
+
+        recognition.onend = () => {
+            setIsListening(false);
+        };
+
+        recognitionRef.current = recognition;
+
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const loadVoices = () => {
+            window.speechSynthesis.getVoices();
+            voicesLoadedRef.current = true;
+        };
+
+        loadVoices();
+        window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+
+        return () => {
+            recognitionRef.current?.stop?.();
+            abortControllerRef.current?.abort();
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.removeEventListener("voiceschanged", loadVoices);
+        };
+    }, []);
+
+    const speakText = (text: string) => {
+        if (!isTtsEnabled) return;
+        if (typeof window === "undefined") return;
+
+        window.speechSynthesis.cancel();
+
+        const utterance = new SpeechSynthesisUtterance(
+            text.replace(/[*#`_]/g, "")
+        );
+
+        const voices =
+            window.speechSynthesis.getVoices();
+
+        const preferred =
+            voices.find(
+                (v) =>
+                    v.lang.includes("en-US") &&
+                    v.name.includes("Google")
+            ) || voices[0];
+
+        if (preferred) utterance.voice = preferred;
+
+        window.speechSynthesis.speak(utterance);
+    };
+
+    useEffect(() => {
+        const last = messages[messages.length - 1];
+
+        if (last?.role === "ai") {
+            speakText(last.content);
+        }
+    }, [messages]);
+
+    const toggleListening = () => {
+        if (!recognitionRef.current) {
+            alert(
+                "Speech Recognition isn't supported in this browser."
+            );
+            return;
+        }
+
+        if (isListening) {
+            recognitionRef.current.stop();
+            setIsListening(false);
+        } else {
+            recognitionRef.current.start();
+            setIsListening(true);
+        }
+    };
 
     const sendMessage = async () => {
+        if (isLoading) return;
+        if (isListening && recognitionRef.current) {
+            recognitionRef.current.stop();
+            setIsListening(false);
+        }
         if (!input.trim()) return;
 
-        const newMessages = [
+        // Append the new user message with a unique ID
+        const newMessages: Message[] = [
             ...messages,
             {
-                role: "user" as const,
+                id: crypto.randomUUID(),
+                role: "user",
                 content: input,
             },
         ];
@@ -50,25 +196,31 @@ export default function ChatPanel({
         setIsLoading(true);
 
         try {
+            abortControllerRef.current?.abort();
+            abortControllerRef.current = new AbortController();
             const res = await fetch("/api/interview", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
+                signal: abortControllerRef.current.signal,
                 body: JSON.stringify({
                     message: input,
                     candidateCode: currentCode,
-                    previousMessages: messages,
+                    previousMessages: newMessages,
                 }),
             });
 
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
+            if (!data?.response) throw new Error("Invalid response");
 
             if (data.error) throw new Error(data.error);
 
             setMessages((prev) => [
                 ...prev,
                 {
+                    id: crypto.randomUUID(),
                     role: "ai",
                     content: data.response,
                 },
@@ -77,6 +229,7 @@ export default function ChatPanel({
             setMessages((prev) => [
                 ...prev,
                 {
+                    id: crypto.randomUUID(),
                     role: "ai",
                     content:
                         "Unable to connect to the interviewer.",
@@ -98,7 +251,6 @@ export default function ChatPanel({
 
                     <div className="relative h-9 w-9 rounded-full border border-white/10 bg-[#1A1B1D] flex items-center justify-center">
                         <Bot size={16} className="text-[#EDEDED]" />
-
                         <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-[#141415]" />
                     </div>
 
@@ -111,16 +263,41 @@ export default function ChatPanel({
                             Online
                         </p>
                     </div>
-                </div>
-            </div>
 
+                </div>
+
+                <button
+                    onClick={() => {
+                        const next = !isTtsEnabled;
+
+                        setIsTtsEnabled(next);
+
+                        if (!next)
+                            window.speechSynthesis.cancel();
+                    }}
+                    className="h-8 w-8 rounded-md bg-[#1A1B1D] border border-white/10 flex items-center justify-center hover:border-white/20 transition"
+                >
+                    {isTtsEnabled ? (
+                        <Volume2
+                            size={16}
+                            className="text-[#EDEDED]"
+                        />
+                    ) : (
+                        <VolumeX
+                            size={16}
+                            className="text-[#666]"
+                        />
+                    )}
+                </button>
+
+            </div>
             {/* Messages */}
 
             <div className="flex-1 overflow-y-auto px-5 py-6 space-y-4 bg-[#141415]">
 
                 {messages.map((msg, idx) => (
                     <div
-                        key={idx}
+                        key={msg.id}
                         className={`flex gap-2.5 ${msg.role === "user"
                             ? "justify-end"
                             : "justify-start"
@@ -167,6 +344,7 @@ export default function ChatPanel({
                         </div>
                     </div>
                 )}
+                <div ref={messagesEndRef} />
             </div>
 
             {/* Input */}
@@ -174,6 +352,21 @@ export default function ChatPanel({
             <div className="border-t border-white/[0.06] bg-[#141415] p-4 shrink-0">
 
                 <div className="flex items-center gap-2 rounded-lg bg-[#1A1B1D] border border-white/[0.08] px-3 py-2 focus-within:border-white/20 transition-colors">
+
+                    <button
+                        onClick={toggleListening}
+                        disabled={isLoading}
+                        className={`h-8 w-8 rounded-md flex items-center justify-center transition ${isListening
+                            ? "bg-red-500 text-white animate-pulse"
+                            : "text-[#8A8A8E] hover:bg-white/5"
+                            }`}
+                    >
+                        {isListening ? (
+                            <MicOff size={15} />
+                        ) : (
+                            <Mic size={15} />
+                        )}
+                    </button>
 
                     <input
                         value={input}
@@ -186,15 +379,18 @@ export default function ChatPanel({
                             !isLoading &&
                             sendMessage()
                         }
-                        placeholder="Reply to interviewer..."
+                        placeholder={
+                            isListening
+                                ? "Listening..."
+                                : "Reply to interviewer..."
+                        }
                         className="flex-1 bg-transparent outline-none text-[13.5px] text-[#EDEDED] placeholder:text-[#5C5C60]"
                     />
 
                     <button
                         disabled={!input.trim() || isLoading}
                         onClick={sendMessage}
-                        aria-label="Send message"
-                        className="h-8 w-8 rounded-md bg-[#E8A33D] text-[#141415] flex items-center justify-center hover:bg-[#F0AE4C] transition-colors disabled:opacity-30 disabled:hover:bg-[#E8A33D]"
+                        className="h-8 w-8 rounded-md bg-[#E8A33D] text-[#141415] flex items-center justify-center hover:bg-[#F0AE4C] transition disabled:opacity-30"
                     >
                         <Send size={15} />
                     </button>
