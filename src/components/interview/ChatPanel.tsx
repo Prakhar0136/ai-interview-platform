@@ -20,19 +20,18 @@ type Message = {
 
 interface ChatPanelProps {
     currentCode: string;
+    messages: Message[];
+    setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+    onEndInterview: () => void;
 }
 
 export default function ChatPanel({
     currentCode,
+    messages,
+    setMessages,
+    onEndInterview,
 }: ChatPanelProps) {
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            id: crypto.randomUUID(),
-            role: "ai",
-            content:
-                "Hello! I'm your AI interviewer. Let's begin your technical interview whenever you're ready.",
-        },
-    ]);
+
 
     const [input, setInput] = useState("");
 
@@ -266,29 +265,33 @@ export default function ChatPanel({
 
                 </div>
 
-                <button
-                    onClick={() => {
-                        const next = !isTtsEnabled;
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={onEndInterview}
+                        className="text-xs bg-red-500/10 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-md font-medium hover:bg-red-500/20 transition"
+                    >
+                        End Interview
+                    </button>
 
-                        setIsTtsEnabled(next);
+                    <button
+                        onClick={() => {
+                            const next = !isTtsEnabled;
+                            setIsTtsEnabled(next);
 
-                        if (!next)
-                            window.speechSynthesis.cancel();
-                    }}
-                    className="h-8 w-8 rounded-md bg-[#1A1B1D] border border-white/10 flex items-center justify-center hover:border-white/20 transition"
-                >
-                    {isTtsEnabled ? (
-                        <Volume2
-                            size={16}
-                            className="text-[#EDEDED]"
-                        />
-                    ) : (
-                        <VolumeX
-                            size={16}
-                            className="text-[#666]"
-                        />
-                    )}
-                </button>
+                            if (!next) {
+                                window.speechSynthesis.cancel();
+                            }
+                        }}
+                        className="h-8 w-8 rounded-md bg-[#1A1B1D] border border-white/10 flex items-center justify-center hover:border-white/20 transition"
+                        title={isTtsEnabled ? "Mute Interviewer Voice" : "Unmute Interviewer Voice"}
+                    >
+                        {isTtsEnabled ? (
+                            <Volume2 size={16} className="text-[#EDEDED]" />
+                        ) : (
+                            <VolumeX size={16} className="text-[#666]" />
+                        )}
+                    </button>
+                </div>
 
             </div>
             {/* Messages */}
